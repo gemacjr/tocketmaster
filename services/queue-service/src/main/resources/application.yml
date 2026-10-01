@@ -1,0 +1,19 @@
+server:
+  port: ${PORT:18084}
+spring:
+  application:
+    name: queue-service
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:15432/tocketmaster}
+    username: ${SPRING_DATASOURCE_USERNAME:tocket}
+    password: ${SPRING_DATASOURCE_PASSWORD:tocket}
+    hikari:
+      maximum-pool-size: 10
+  jpa:
+    open-in-view: false
+
+redis:
+  uri: ${REDIS_URI:redis://localhost:6379}
+
+management:
+  endpoints.web.exposure.include: health,info

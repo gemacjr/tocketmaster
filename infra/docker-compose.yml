@@ -1,0 +1,173 @@
+# TocketMaster local infrastructure + edge.
+#
+#   docker compose up -d            -> postgres, redis, opensearch, nginx (proxying to
+#                                      host-run services on 8081-8084) and the frontend build
+#   docker compose --profile containers up -d --build
+#                                   -> additionally runs all four Spring services in containers
+#
+name: tocketmaster
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: tocket
+      POSTGRES_PASSWORD: tocket
+      POSTGRES_DB: tocketmaster
+    ports:
+      - "15432:5432"
+    volumes:
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tocket -d tocketmaster"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    command: ["redis-server", "--maxmemory", "256mb", "--maxmemory-policy", "noeviction"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  opensearch:
+    image: opensearchproject/opensearch:2.13.0
+    environment:
+      discovery.type: single-node
+      DISABLE_SECURITY_PLUGIN: "true"
+      OPENSEARCH_JAVA_OPTS: "-Xms512m -Xmx512m"
+      bootstrap.memory_lock: "false"
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
+    ports:
+      - "9200:9200"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s http://localhost:9200/_cluster/health | grep -q '\"status\"'"]
+      interval: 5s
+      timeout: 5s
+      retries: 40
+
+  # ---------------------------------------------------------------- app services (optional)
+  event-service:
+    profiles: ["containers"]
+    build:
+      context: ..
+      dockerfile: infra/docker/service.Dockerfile
+      args:
+        MODULE: event-service
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/tocketmaster
+      REDIS_URI: redis://redis:6379
+      SEARCH_SERVICE_URL: http://search-service:8082
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8081/actuator/health | grep -q UP"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  search-service:
+    profiles: ["containers"]
+    build:
+      context: ..
+      dockerfile: infra/docker/service.Dockerfile
+      args:
+        MODULE: search-service
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/tocketmaster
+      REDIS_URI: redis://redis:6379
+      OPENSEARCH_URL: http://opensearch:9200
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      opensearch: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8082/actuator/health | grep -q UP"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  booking-service:
+    profiles: ["containers"]
+    build:
+      context: ..
+      dockerfile: infra/docker/service.Dockerfile
+      args:
+        MODULE: booking-service
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/tocketmaster
+      REDIS_URI: redis://redis:6379
+      APP_SELF_URL: http://booking-service:8083
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8083/actuator/health | grep -q UP"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  queue-service:
+    profiles: ["containers"]
+    build:
+      context: ..
+      dockerfile: infra/docker/service.Dockerfile
+      args:
+        MODULE: queue-service
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/tocketmaster
+      REDIS_URI: redis://redis:6379
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8084/actuator/health | grep -q UP"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  # ---------------------------------------------------------------- edge + frontend
+  nginx:
+    image: nginx:1.27-alpine
+    ports:
+      - "18080:80"
+    volumes:
+      # default conf routes /api/* to host.docker.internal (services run on the host);
+      # the containers profile swaps in the internal-routing conf
+      - ./nginx/default.conf.template:/etc/nginx/templates/default.conf.template:ro
+      - ./nginx/tm_proxy.conf:/etc/nginx/tm_proxy.conf:ro
+      - frontend-dist:/usr/share/nginx/html:ro
+    environment:
+      EVENT_UPSTREAM: ${EVENT_UPSTREAM:-host.docker.internal:18081}
+      SEARCH_UPSTREAM: ${SEARCH_UPSTREAM:-host.docker.internal:18082}
+      BOOKING_UPSTREAM: ${BOOKING_UPSTREAM:-host.docker.internal:18083}
+      QUEUE_UPSTREAM: ${QUEUE_UPSTREAM:-host.docker.internal:18084}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      frontend:
+        condition: service_completed_successfully
+
+  frontend:
+    image: node:22-alpine
+    working_dir: /app
+    command: sh -c "npm ci && npm run build && cp -r dist/. /export/"
+    volumes:
+      - ../frontend:/app
+      - frontend-dist:/export
+    environment:
+      CI: "true"
+
+volumes:
+  pgdata:
+  frontend-dist:

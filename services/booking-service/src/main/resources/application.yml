@@ -1,0 +1,30 @@
+server:
+  port: ${PORT:18083}
+spring:
+  application:
+    name: booking-service
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:15432/tocketmaster}
+    username: ${SPRING_DATASOURCE_USERNAME:tocket}
+    password: ${SPRING_DATASOURCE_PASSWORD:tocket}
+    hikari:
+      maximum-pool-size: 30
+  jpa:
+    open-in-view: false
+    properties:
+      hibernate:
+        jdbc.time_zone: UTC
+
+redis:
+  uri: ${REDIS_URI:redis://localhost:6379}
+
+booking:
+  hold-ttl-seconds: ${HOLD_TTL_SECONDS:600}
+  sweep-interval-ms: ${SWEEP_INTERVAL_MS:30000}
+
+app:
+  # where the mock gateway delivers its payment.succeeded webhook (our own endpoint)
+  self-url: ${APP_SELF_URL:http://localhost:18083}
+
+management:
+  endpoints.web.exposure.include: health,info

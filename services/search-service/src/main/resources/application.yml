@@ -1,0 +1,25 @@
+server:
+  port: ${PORT:18082}
+spring:
+  application:
+    name: search-service
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:15432/tocketmaster}
+    username: ${SPRING_DATASOURCE_USERNAME:tocket}
+    password: ${SPRING_DATASOURCE_PASSWORD:tocket}
+    hikari:
+      maximum-pool-size: 10
+  jpa:
+    open-in-view: false
+
+redis:
+  uri: ${REDIS_URI:redis://localhost:6379}
+
+opensearch:
+  url: ${OPENSEARCH_URL:http://localhost:9200}
+
+search:
+  fallback-enabled: ${SEARCH_FALLBACK_ENABLED:true}
+
+management:
+  endpoints.web.exposure.include: health,info

@@ -1,0 +1,28 @@
+server:
+  port: ${PORT:18081}
+spring:
+  application:
+    name: event-service
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:15432/tocketmaster}
+    username: ${SPRING_DATASOURCE_USERNAME:tocket}
+    password: ${SPRING_DATASOURCE_PASSWORD:tocket}
+    hikari:
+      maximum-pool-size: 20
+  jpa:
+    open-in-view: false
+    properties:
+      hibernate:
+        jdbc.time_zone: UTC
+
+redis:
+  uri: ${REDIS_URI:redis://localhost:6379}
+
+search:
+  service-url: ${SEARCH_SERVICE_URL:http://localhost:18082}
+
+relay:
+  poll-interval-ms: ${RELAY_POLL_INTERVAL_MS:2000}
+
+management:
+  endpoints.web.exposure.include: health,info
